@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Faint Movers · ConvLSTM Asteroid Detection</title>
+<meta name="description" content="Interactive dashboard for a BiConvLSTM framework that detects and localises faint moving sources in DECam image sequences.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,560;1,9..144,400&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+<script>
+  // set the theme before first paint (saved choice, else the OS setting)
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("fm-theme"); } catch (e) {}
+    if (t !== "light" && t !== "dark") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M7 15c0-5 4-9 9-8 3 0 4-1 7 0 4 2 6 5 5 9 0 5-3 8-7 9-3 1-6 1-9 0-4-1-6-4-5-7z' fill='%23fdf8ee' stroke='%231d2340' stroke-width='2'/%3E%3Cpath d='M11 11l10 10M21 11L11 21' stroke='%23e0533a' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="doodles" aria-hidden="true"></div>
+
+<header class="topbar">
+  <a class="brand" href="#home" aria-label="Faint Movers home">
+    <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><path d="M7 15c0-5 4-9 9-8 3 0 4-1 7 0 4 2 6 5 5 9 0 5-3 8-7 9-3 1-6 1-9 0-4-1-6-4-5-7z" fill="var(--card)" stroke="currentColor" stroke-width="2"/><path d="M11 11l10 10M21 11L11 21" stroke="var(--coral)" stroke-width="2.4" stroke-linecap="round"/></svg>
+    <span>Faint&nbsp;Movers</span>
+  </a>
+  <nav id="nav" aria-label="Main">
+    <a href="#home">Home</a>
+    <a href="#detect">Detect</a>
+    <a href="#methodology">Methodology</a>
+    <a href="#dataset">Dataset</a>
+    <a href="#results">Results</a>
+    <a href="#paper">Paper</a>
+  </nav>
+  <a class="mode-pill" id="modePill" href="#detect" title="No API URL configured yet — see js/config.js">demo mode</a>
+  <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Toggle dark mode">
+    <svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    <svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+  </button>
+  <button class="nav-toggle" aria-label="Open menu"><span></span><span></span><span></span></button>
+</header>
+
+<main>
+<!-- =========================== HOME =========================== -->
+<section class="page" data-page="home" id="page-home">
+  <div class="hero">
+    <p class="eyebrow">IEOM 2026 · Bangalore · VIT-AP University</p>
+    <h1>Catching faint asteroids<br><em>by the way they move.</em></h1>
+    <p class="lede">A bidirectional ConvLSTM that reads a short sequence of telescope frames, finds sources that move between exposures, and returns where they are and where they're going — trained on synthetic movers injected into real Dark Energy Camera skies.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="#detect">Try the detector <span aria-hidden="true">→</span></a>
+      <a class="btn btn-ghost" href="#paper">Read the paper</a>
+    </div>
+  </div>
+
+  <div class="stat-row" aria-label="Headline results on 20 held-out tracklets">
+    <div class="stat"><span class="stat-v">0.930</span><span class="stat-l">Precision</span></div>
+    <div class="stat"><span class="stat-v">0.863</span><span class="stat-l">Recall</span></div>
+    <div class="stat"><span class="stat-v">0.895</span><span class="stat-l">F1-score</span></div>
+    <div class="stat"><span class="stat-v">3.02<small> px</small></span><span class="stat-l">Median localisation error</span></div>
+    <div class="stat"><span class="stat-v">3.16<small> px/fr</small></span><span class="stat-l">Median velocity error</span></div>
+  </div>
+  <p class="fineprint center">Micro-averaged, track-level, on 20 held-out DECam tracklets with 1–5 synthetic injections.</p>
+
+  <div class="how">
+    <h2 class="section-h">How it works</h2>
+    <ol class="how-steps">
+      <li class="card">
+        <span class="how-n">1</span>
+        <h3>Upload a sequence</h3>
+        <p>Two or more registered frames (<code>.fits</code> or <code>.png</code>) of the same patch of sky, in time order.</p>
+      </li>
+      <li class="card">
+        <span class="how-n">2</span>
+        <h3>CNN → BiConvLSTM</h3>
+        <p>A shared encoder reads each frame; forward and backward ConvLSTMs reason about what changed across time.</p>
+      </li>
+      <li class="card">
+        <span class="how-n">3</span>
+        <h3>Tracks, not blips</h3>
+        <p>A centre heatmap and velocity field decode into trajectories with per-frame coordinates and confidence.</p>
+      </li>
+    </ol>
+  </div>
+
+  <figure class="card fig">
+    <img src="assets/fig5-qualitative.jpg" alt="Three consecutive frames: green circles mark injected sources, red crosses mark model predictions, which overlap closely." loading="lazy">
+    <figcaption>Model output on a held-out sample with two injected movers. <span class="k-gt">○ ground truth</span> · <span class="k-pred">× prediction</span></figcaption>
+  </figure>
+</section>
+
+<!-- =========================== DETECT =========================== -->
+<section class="page" data-page="detect" id="page-detect" hidden>
+  <header class="page-head">
+    <p class="eyebrow">Live inference</p>
+    <h1>Run detection</h1>
+    <p class="api-status" id="apiStatus"></p>
+  </header>
+
+  <div class="card step-card">
+    <div class="step-title"><span class="step-n">1</span><h2>Build your sequence</h2><span class="muted" id="frameCount">No frames yet</span></div>
+
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload frames: drop files or press Enter to browse">
+      <input type="file" id="fileInput" multiple hidden>
+      <div class="dz-inner">
+        <svg class="dz-ico" viewBox="0 0 64 48" aria-hidden="true"><rect x="10" y="8" width="30" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><rect x="18" y="4" width="30" height="30" rx="4" fill="var(--card)" stroke="currentColor" stroke-width="2"/><rect x="26" y="0" width="30" height="30" rx="4" fill="var(--card)" stroke="currentColor" stroke-width="2"/><path d="M34 22l4-5 4 3 6-7" fill="none" stroke="var(--coral)" stroke-width="2" stroke-linecap="round"/></svg>
+        <p><b>Drop frames here</b> or <u>browse</u></p>
+        <p class="muted">.fits · .fit · .fts · .png — 2 or more, same field, any order (you can reorder below)</p>
+      </div>
+    </div>
+
+    <div class="seq-tools" id="seqTools" hidden>
+      <span class="muted small">Drag cards or use ‹ › to set the chronological order:</span>
+      <span class="spacer"></span>
+      <button class="btn btn-sm" id="btnSortName">Sort by name</button>
+      <button class="btn btn-sm" id="btnSortTime" title="Uses DATE-OBS / MJD-OBS for FITS, file date for PNG">Sort by time</button>
+      <button class="btn btn-sm btn-quiet" id="btnClear">Clear all</button>
+    </div>
+    <ol class="frame-list" id="frameList" hidden></ol>
+
+    <div class="sample-line">
+      <span class="muted small">No data handy?</span>
+      <button class="btn btn-sm btn-ghost" id="btnSample">Load sample tracklet</button>
+    </div>
+  </div>
+
+  <div class="card step-card run-card" id="runBox">
+    <div class="step-title"><span class="step-n">2</span><h2>Run the model</h2></div>
+    <div class="run-row">
+      <button class="btn btn-primary btn-lg" id="btnRun" disabled>
+        <span class="run-label">Run detection</span>
+        <span class="spinner" aria-hidden="true"></span>
+      </button>
+      <button class="btn btn-quiet" id="btnCancel" hidden>Cancel</button>
+      <div class="run-meta">
+        <div id="runHint" class="muted">Add at least 2 frames to run detection.</div>
+        <div><span id="runStatus"></span> <span id="runTimer" class="mono"></span></div>
+      </div>
+    </div>
+    <div class="error-box" id="errorBox" role="alert" hidden></div>
+  </div>
+
+  <div class="results-empty card" id="resultsEmpty">
+    <svg viewBox="0 0 200 90" aria-hidden="true"><path d="M10 70 L190 20" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 8" stroke-linecap="round"/><g stroke="var(--coral)" stroke-width="2.4" stroke-linecap="round"><path d="M44 54l10 10M54 54l-10 10"/><path d="M94 40l10 10M104 40l-10 10"/><path d="M144 26l10 10M154 26l-10 10"/></g></svg>
+    <p>Detections, annotated frames and trajectories will appear here.</p>
+  </div>
+
+  <div id="results" hidden>
+    <div class="step-title out-title"><span class="step-n">3</span><h2>Results</h2></div>
+    <div class="results-grid">
+      <div class="card viewer-card" id="viewer" tabindex="0" aria-label="Frame viewer. Space to play or pause, arrow keys to step.">
+        <div class="viewer-top">
+          <div data-v="counter" class="counter"></div>
+          <div class="seg" data-v="modes" hidden>
+            <label><input type="radio" name="vmode" value="annotated" checked><span>API annotated</span></label>
+            <label><input type="radio" name="vmode" value="overlay"><span>Overlay</span></label>
+          </div>
+        </div>
+        <div class="canvas-wrap"><canvas aria-label="Current frame with detections"></canvas></div>
+        <div class="readout mono" data-v="readout">hover the image for pixel coordinates</div>
+        <div class="controls">
+          <button class="icon-btn" data-v="first" aria-label="First frame"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 5h2v14H6zM19 5v14l-10-7z" fill="currentColor"/></svg></button>
+          <button class="icon-btn" data-v="prev" aria-label="Previous frame"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M16 5v14L6 12z" fill="currentColor"/></svg></button>
+          <button class="icon-btn play" data-v="play" aria-label="Play"></button>
+          <button class="icon-btn" data-v="next" aria-label="Next frame"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 5v14l10-7z" fill="currentColor"/></svg></button>
+          <button class="icon-btn" data-v="last" aria-label="Last frame"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M16 5h2v14h-2zM5 5v14l10-7z" fill="currentColor"/></svg></button>
+          <input type="range" data-v="scrub" min="0" max="1" value="0" aria-label="Frame">
+          <label class="speed">Speed <select data-v="speed" aria-label="Playback speed"></select></label>
+        </div>
+        <div class="layers">
+          <label><input type="checkbox" data-layer="pred" checked><span class="k-pred">×</span> Predictions</label>
+          <label><input type="checkbox" data-layer="traj" checked><span class="k-traj">┄</span> Trajectory</label>
+          <label><input type="checkbox" data-layer="labels" checked>Labels</label>
+          <label><input type="checkbox" data-layer="gt" checked><span class="k-gt">○</span> Ground truth</label>
+        </div>
+        <div class="thumbs" data-v="thumbs"></div>
+      </div>
+
+      <aside class="card metrics-card">
+        <h3 class="card-h">Run summary</h3>
+        <div id="metrics"></div>
+        <h3 class="card-h">Download</h3>
+        <div class="dl-list">
+          <button class="btn btn-sm" id="dlZip"><b>Everything</b>&nbsp;(.zip)</button>
+          <button class="btn btn-sm" id="dlFrame"><span id="dlFrameLabel">Current frame (annotated PNG)</span></button>
+          <button class="btn btn-sm" id="dlCsv">Trajectories (.csv)</button>
+          <button class="btn btn-sm" id="dlJson">Raw API response (.json)</button>
+          <a class="btn btn-sm" id="dlApi" href="#" target="_blank" rel="noopener" hidden>Server bundle ↗</a>
+        </div>
+      </aside>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h3 class="card-h">Trajectories across frames</h3>
+        <p class="muted small">Positions in the registered image grid. Click a point to jump to that frame.</p>
+        <div id="trajPlot"></div>
+      </div>
+      <div class="card">
+        <h3 class="card-h">Coordinates per frame</h3>
+        <p class="muted small">x, y in pixels for every track. Click a row to view that frame.</p>
+        <div id="coordTable"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 class="card-h">Detected objects</h3>
+      <p class="muted small">Click a row to isolate that track in the viewer.</p>
+      <div id="detTableWrap"></div>
+    </div>
+
+    <details class="card raw">
+      <summary>Raw API response</summary>
+      <pre id="rawJson" class="mono"></pre>
+    </details>
+  </div>
+</section>
+
+<!-- =========================== METHODOLOGY =========================== -->
+<section class="page" data-page="methodology" id="page-methodology" hidden>
+  <header class="page-head">
+    <p class="eyebrow">About the method</p>
+    <h1>Motion is the signal</h1>
+    <p class="lede">A single exposure can't tell a faint asteroid from noise, a cosmic ray or a dim star. Across several exposures, it moves. The model is built to learn that movement directly from the ordered image sequence.</p>
+  </header>
+
+  <div class="card">
+    <h2 class="card-h big">Model architecture</h2>
+    <div class="arch-summary">
+      <span class="pill g-cnn">CNN encoder</span><span class="arr">→</span>
+      <span class="pill g-lstm">Bidirectional ConvLSTM</span><span class="arr">→</span>
+      <span class="pill g-fuse">Fusion + decoder</span><span class="arr">→</span>
+      <span class="pill g-out">Localisation &amp; trajectory</span>
+    </div>
+    <p class="muted small">Hover or tap a stage to see what it does. Shapes are for a 1024 × 1024 input.</p>
+    <div id="archDiagram"></div>
+    <div class="arch-detail" id="archDetail" aria-live="polite"></div>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <h3 class="card-h">Five-stage pipeline</h3>
+      <ol class="timeline">
+        <li><b>Prepare sequences.</b> FITS frames grouped into tracklets, cropped to 1024², WCS-registered, MAD-normalised.</li>
+        <li><b>Inject synthetic movers.</b> Gaussian-PSF sources with known positions and 50–75 px/frame motion.</li>
+        <li><b>Extract spatiotemporal features.</b> Shared CNN encoder, then forward + backward ConvLSTMs.</li>
+        <li><b>Localise &amp; regress motion.</b> Centre heatmap on the reference frame, plus velocity and sub-pixel offset.</li>
+        <li><b>Decode &amp; evaluate.</b> Threshold + NMS, reconstruct tracks, match against injected ground truth.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3 class="card-h">Training configuration</h3>
+      <table class="data-table plain"><tbody id="trainTable"></tbody></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="card-h">Why a reference frame?</h3>
+    <p>Rather than predicting a separate map for every frame, the network predicts object centres once — on the middle frame <span class="mono">t<sub>r</sub> = ⌊T/2⌋</span> — and a velocity for each. Every other position follows from linear motion, <span class="mono">x<sub>t</sub> = x<sub>r</sub> + v<sub>x</sub>(t − t<sub>r</sub>)</span>. Bidirectional recurrence means the reference frame sees context from both before and after it.</p>
+    <figure class="fig inset">
+      <img src="assets/fig3-architecture.jpg" alt="Detailed BiConvLSTM architecture figure from the paper" loading="lazy">
+      <figcaption>Figure 3 from the paper: detailed network architecture.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- =========================== DATASET =========================== -->
+<section class="page" data-page="dataset" id="page-dataset" hidden>
+  <header class="page-head">
+    <p class="eyebrow">Data</p>
+    <h1>Real skies, synthetic movers</h1>
+    <p class="lede">Labelled asteroid tracklets are scarce, so the benchmark keeps the hard part real: genuine DECam backgrounds with stars, galaxies, noise and artifacts. Moving sources with known trajectories are injected on top for supervision.</p>
+  </header>
+
+  <div class="stat-row compact">
+    <div class="stat"><span class="stat-v">103</span><span class="stat-l">Usable tracklets</span></div>
+    <div class="stat"><span class="stat-v">1,648</span><span class="stat-l">Generated samples</span></div>
+    <div class="stat"><span class="stat-v">8 + 8</span><span class="stat-l">Positive + negative per tracklet</span></div>
+    <div class="stat"><span class="stat-v">≥ 3</span><span class="stat-l">Frames per sequence</span></div>
+    <div class="stat"><span class="stat-v">1024²</span><span class="stat-l">Crop size (px)</span></div>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <h3 class="card-h">From archive to training sample</h3>
+      <ol class="timeline">
+        <li><b>Retrieve</b> DECam FITS observations from the NOIRLab Astro Data Archive.</li>
+        <li><b>Quality control</b>: valid FITS structure; masks and weight maps excluded.</li>
+        <li><b>Group</b> consecutive exposures of a field into ordered tracklets.</li>
+        <li><b>Register</b> each frame to a shared WCS reference grid, crop 1024 × 1024.</li>
+        <li><b>Normalise</b> per frame with median and MAD.</li>
+        <li><b>Inject</b> synthetic movers (before reprojection, so they're resampled like the sky), then clip.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3 class="card-h">Synthetic injection</h3>
+      <dl class="kv">
+        <dt>Profile</dt><dd>Gaussian PSF, sampled amplitude &amp; width</dd>
+        <dt>Apparent motion</dt><dd>50–75 px / frame (fast NEO-like)</dd>
+        <dt>Trajectory</dt><dd>Linear, with small perturbations</dd>
+        <dt>Validity</dt><dd>Whole path inside crop &amp; registered area</dd>
+        <dt>Faintness</dt><dd><span class="mono">SNR = F<sub>source</sub> / σ<sub>background</sub></span></dd>
+        <dt>Negatives</dt><dd>Same backgrounds, nothing injected</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="card-h">Partitioning by field and night</h3>
+    <p class="muted small">Tracklets from the same field–night group never cross subsets, to limit leakage between near-identical backgrounds. Proportions are of groups, not individual samples.</p>
+    <div class="split-bar" id="splitBar"></div>
+  </div>
+
+  <figure class="card fig">
+    <img src="assets/fig4-tracklet.jpg" alt="A row of six frames from one tracklet, with a red marker showing the injected moving source in alternating panels." loading="lazy">
+    <figcaption>A tracklet after synthetic injection: the marked source moves between exposures while the star field stays put.</figcaption>
+  </figure>
+</section>
+
+<!-- =========================== RESULTS =========================== -->
+<section class="page" data-page="results" id="page-results" hidden>
+  <header class="page-head">
+    <p class="eyebrow">Evaluation</p>
+    <h1>How well does it work?</h1>
+    <p class="lede">The selected checkpoint was evaluated once on 20 held-out tracklets, with one to five simultaneous injections. Crowded scenes are harder, but localisation stays at about 3 pixels throughout.</p>
+  </header>
+
+  <div class="stat-row compact">
+    <div class="stat"><span class="stat-v">1,813</span><span class="stat-l">True positives</span></div>
+    <div class="stat"><span class="stat-v">137</span><span class="stat-l">False positives</span></div>
+    <div class="stat"><span class="stat-v">287</span><span class="stat-l">False negatives</span></div>
+    <div class="stat"><span class="stat-v">0.895</span><span class="stat-l">Micro F1</span></div>
+  </div>
+
+  <div class="card">
+    <h3 class="card-h">Precision, recall and F1 vs. number of movers</h3>
+    <p class="muted small">Track-level, held-out set. Y-axis starts at 0.80 to show the trend.</p>
+    <div id="chartPRF"></div>
+  </div>
+
+  <div class="three-col">
+    <div class="card">
+      <h3 class="card-h">Exact-set accuracy</h3>
+      <p class="muted small">Every target found and nothing extra.</p>
+      <div id="chartAcc"></div>
+    </div>
+    <div class="card">
+      <h3 class="card-h">Median localisation error</h3>
+      <p class="muted small">Pixels, per matched track.</p>
+      <div id="chartLoc"></div>
+    </div>
+    <div class="card">
+      <h3 class="card-h">Median velocity error</h3>
+      <p class="muted small">Pixels per frame (≈ 4–6% of speed).</p>
+      <div id="chartVel"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="card-h">Detection performance (Table 5)</h3>
+    <div class="table-wrap"><table class="data-table" id="tableDetection"></table></div>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <h3 class="card-h">Localisation &amp; motion (Table 6)</h3>
+      <div class="table-wrap"><table class="data-table" id="tableLoc"></table></div>
+      <p class="muted small">Median track coverage was 1.000 in every scenario.</p>
+    </div>
+    <div class="card">
+      <h3 class="card-h">Evaluation protocol</h3>
+      <dl class="kv" id="evalSettings"></dl>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <figure class="card fig">
+      <img src="assets/fig6-loss.jpg" alt="Training and validation loss falling sharply then flattening over 60 epochs" loading="lazy">
+      <figcaption>Training vs. validation loss over 60 epochs: little change after ~epoch 30.</figcaption>
+    </figure>
+    <figure class="card fig">
+      <img src="assets/fig9-val-recall.jpg" alt="Validation recall per epoch for one to five injected sources" loading="lazy">
+      <figcaption>Validation recall by epoch (validation split, not the final test).</figcaption>
+    </figure>
+  </div>
+
+  <div class="card note">
+    <b>Scope.</b> All numbers come from synthetic injections on real DECam backgrounds. They show feasibility under controlled conditions, not equivalent performance on naturally occurring asteroids; that, plus baselines and SNR / velocity sweeps, is future work.
+  </div>
+</section>
+
+<!-- =========================== PAPER =========================== -->
+<section class="page" data-page="paper" id="page-paper" hidden>
+  <header class="page-head">
+    <p class="eyebrow">Proceedings of the 6th India International Conference on Industrial Engineering and Operations Management · Bangalore, November 5–7, 2026</p>
+    <h1 class="paper-title">A ConvLSTM Framework for Faint Moving-Source Detection in Astronomical Image Sequences</h1>
+    <p class="authors">Kali Singh · Sameer Nalbandh · Ankur Das · Syed Sadia Zoya · <span class="adv">Dr. S. Kalyani</span></p>
+    <p class="muted">School of Computer Science and Engineering (SCOPE), VIT-AP University, Amaravati, Andhra Pradesh, India</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" id="pdfLink" href="assets/paper.pdf" target="_blank" rel="noopener">Open PDF ↗</a>
+      <button class="btn btn-ghost" id="btnCopyBib">Copy BibTeX</button>
+    </div>
+  </header>
+
+  <div class="card prose">
+    <h3 class="card-h">Abstract</h3>
+    <p>Faint moving asteroids and other objects in astronomical images are challenging to detect against crowded stellar fields, background noise, and imaging artifacts. Their motion across successive exposures provides a distinguishing feature, but low brightness and subtle temporal signatures complicate reliable detection and localization. This study presents a ConvLSTM-based framework for detecting and localizing moving sources in short sequences of Dark Energy Camera (DECam) images, represented as astronomical tracklets. Owing to the limited availability of labelled asteroid observations, synthetic moving sources were injected into DECam image sequences to construct a supervised dataset with known target positions and trajectories. The proposed architecture was trained on this synthetic benchmark and evaluated on a held-out set of twenty tracklets containing one to five simultaneous injections. Across all scenarios, the detector achieved a micro-averaged track-level precision of 0.930, recall of 0.863, and F1-score of 0.895, with a median localization error of approximately 3.0 pixels. Recall decreased from 91.4% for one injection to 83.1% for five injections, although the trend was not strictly monotonic. The results demonstrate the feasibility of using ConvLSTM-based spatiotemporal learning to detect and localize fast-moving sources in astronomical tracklets under controlled synthetic conditions. This work establishes an architectural proof of concept for applying deep learning to astronomical moving-source detection.</p>
+    <p class="tags"><span>ConvLSTM</span><span>Moving-Object Detection</span><span>DECam</span><span>Synthetic Data</span><span>Astronomical Image Sequences</span></p>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <h3 class="card-h">Contributions</h3>
+      <ul class="ticks">
+        <li>A supervised benchmark built by injecting synthetic movers into real DECam sequences.</li>
+        <li>A BiConvLSTM detector that predicts reference-frame centres, velocity and sub-pixel offsets.</li>
+        <li>Track-level evaluation of recovery, localisation and motion as target density grows.</li>
+      </ul>
+      <h3 class="card-h">Next steps</h3>
+      <ul class="ticks soft">
+        <li>More held-out fields and nights, with confidence intervals.</li>
+        <li>Labelled real asteroid tracklets.</li>
+        <li>Baselines (difference imaging) and temporal-module ablations.</li>
+        <li>Resolution and SNR / velocity sweeps.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 class="card-h">Cite</h3>
+<pre class="bib mono" id="bibtex">@inproceedings{singh2026convlstm,
+  title     = {A ConvLSTM Framework for Faint Moving-Source
+               Detection in Astronomical Image Sequences},
+  author    = {Singh, Kali and Nalbandh, Sameer and Das, Ankur
+               and Zoya, Syed Sadia and Kalyani, S.},
+  booktitle = {Proceedings of the 6th India International Conference
+               on Industrial Engineering and Operations Management},
+  address   = {Bangalore, India},
+  month     = nov,
+  year      = {2026}
+}</pre>
+      <h3 class="card-h">Team</h3>
+      <ul class="team">
+        <li><b>Kali Singh</b><span>B.Tech CSE</span></li>
+        <li><b>Sameer Nalbandh</b><span>B.Tech CSE</span></li>
+        <li><b>Ankur Das</b><span>B.Tech CSE</span></li>
+        <li><b>Syed Sadia Zoya</b><span>B.Tech CSE</span></li>
+        <li><b>Dr. S. Kalyani</b><span>Supervisor · Asst. Professor Sr. Grade-2</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <figure class="card fig">
+    <img src="assets/fig1-landscape.jpg" alt="Research landscape of moving-object detection and where this study sits" loading="lazy">
+    <figcaption>Research landscape of moving-object detection and the present study (Figure 1).</figcaption>
+  </figure>
+</section>
+</main>
+
+<footer class="footer">
+  <span>Faint Movers · BiConvLSTM moving-source detection · SCOPE, VIT-AP University</span>
+  <span class="muted">Results are on synthetic injections over real DECam backgrounds.</span>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
