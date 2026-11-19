@@ -146,3 +146,21 @@ assets/               figures from the paper + paper.pdf
 - FITS previews are for display only; the API always receives the original files.
 - Chart palette validated for colour-vision deficiency (blue `#3355a8`, coral `#d9603b`, teal `#2a9d8f`);
   overlays use red ✕ for predictions and green ○ for ground truth, matching the paper's figures.
+
+---
+
+## Live API (current)
+
+`js/config.js` points at the Modal deployment
+(`…asteroid-detection-api-fastapi-app.us-east.modal.run/predict`):
+
+- request: `multipart/form-data`, files under `frames` (≥ 3, `.fits` / `.fits.fz`, chronological),
+  plus `confidence_threshold`, `nms_radius_px`, and an optional `ccd` (typed on the Detect page)
+- response keys: `detections[].candidate_id / confidence / position_px / velocity_px_per_frame / trajectory_px[{frame_index,x,y}]`,
+  `reference_frame_index`, `timings_seconds` (processing time is read from its `total`), `note`
+- coordinates are on the API's **registered 1024 × 1024 reference crop** (`coordinateSpace` in config)
+
+**Exact frame display:** if the API also returns the registered crops as base64 PNGs under
+`registered_frames` (one per input frame), the viewer draws its markers on those, pixel-exact.
+Without them it shows a centre crop of each raw upload and labels the markers as approximate.
+`.fits.fz` files can't be previewed in the browser but are still sent to the API.

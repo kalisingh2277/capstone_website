@@ -109,7 +109,7 @@
       <div class="dz-inner">
         <svg class="dz-ico" viewBox="0 0 64 48" aria-hidden="true"><rect x="10" y="8" width="30" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><rect x="18" y="4" width="30" height="30" rx="4" fill="var(--card)" stroke="currentColor" stroke-width="2"/><rect x="26" y="0" width="30" height="30" rx="4" fill="var(--card)" stroke="currentColor" stroke-width="2"/><path d="M34 22l4-5 4 3 6-7" fill="none" stroke="var(--coral)" stroke-width="2" stroke-linecap="round"/></svg>
         <p><b>Drop frames here</b> or <u>browse</u></p>
-        <p class="muted">.fits · .fit · .fts · .png — 2 or more, same field, any order (you can reorder below)</p>
+        <p class="muted" id="dzTypes">.fits · .fit · .fts · .png: 2 or more frames of the same field, any order (reorder below)</p>
       </div>
     </div>
 
@@ -122,7 +122,7 @@
     </div>
     <ol class="frame-list" id="frameList" hidden></ol>
 
-    <div class="sample-line">
+    <div class="sample-line" id="sampleLine">
       <span class="muted small">No data handy?</span>
       <button class="btn btn-sm btn-ghost" id="btnSample">Load sample tracklet</button>
     </div>
@@ -130,6 +130,10 @@
 
   <div class="card step-card run-card" id="runBox">
     <div class="step-title"><span class="step-n">2</span><h2>Run the model</h2></div>
+    <div class="ccd-row" id="ccdRow" hidden>
+      <label for="ccdInput">CCD <span class="muted">(optional, for multi-extension DECam files)</span></label>
+      <input id="ccdInput" type="text" placeholder="e.g. N4 or S10" autocomplete="off" spellcheck="false">
+    </div>
     <div class="run-row">
       <button class="btn btn-primary btn-lg" id="btnRun" disabled>
         <span class="run-label">Run detection</span>
@@ -161,6 +165,7 @@
           </div>
         </div>
         <div class="canvas-wrap"><canvas aria-label="Current frame with detections"></canvas></div>
+        <div class="viewer-note" data-v="note" hidden></div>
         <div class="readout mono" data-v="readout">hover the image for pixel coordinates</div>
         <div class="controls">
           <button class="icon-btn" data-v="first" aria-label="First frame"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 5h2v14H6zM19 5v14l-10-7z" fill="currentColor"/></svg></button>

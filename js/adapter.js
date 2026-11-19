@@ -100,12 +100,24 @@ export function normalizeResponse(raw, ctx) {
   if (Array.isArray(imageSize)) imageSize = { w: +imageSize[0], h: +imageSize[1] };
   else if (imageSize && typeof imageSize === "object")
     imageSize = { w: +(imageSize.width ?? imageSize.w), h: +(imageSize.height ?? imageSize.h) };
-  else imageSize = ctx.uploadDims || null;
+  else imageSize = ctx.coordinateSpace || ctx.uploadDims || null;
 
   const ann = get(raw, m.annotatedFrames);
   const annotatedFrames = Array.isArray(ann) ? ann.map(toImageSrc) : [];
+  const reg = m.registeredFrames ? get(raw, m.registeredFrames) : null;
+  const registeredFrames = Array.isArray(reg) ? reg.map(toImageSrc) : [];
 
-  const procMs = num(get(raw, m.processingTime));
+  let procMs = m.processingTime ? num(get(raw, m.processingTime)) : null;
+  if (procMs === null && m.processingTimeSeconds) {
+    const t = get(raw, m.processingTimeSeconds);
+    if (typeof t === "number") procMs = t * 1000;
+    else if (t && typeof t === "object") {
+      const total = ["total", "total_s", "total_seconds", "end_to_end", "overall"].map((k) => num(t[k])).find((v) => v !== null);
+      const nums = Object.values(t).map(num).filter((v) => v !== null);
+      const secs = total ?? (nums.length ? nums.reduce((a, b) => a + b, 0) : null);
+      if (secs !== null) procMs = secs * 1000;
+    }
+  }
   const metricsRaw = get(raw, m.metrics);
 
   return {
@@ -115,6 +127,7 @@ export function normalizeResponse(raw, ctx) {
     detections,
     groundTruth,
     annotatedFrames,
+    registeredFrames,
     processingTimeMs: procMs,
     roundTripMs: ctx.roundTripMs ?? null,
     metrics: metricsRaw && typeof metricsRaw === "object" ? metricsRaw : {},
@@ -127,7 +140,7 @@ export function normalizeResponse(raw, ctx) {
 function defaults(ctx) {
   return {
     nFrames: ctx.nFrames, referenceFrame: Math.floor(ctx.nFrames / 2), imageSize: ctx.uploadDims || null,
-    detections: [], groundTruth: [], annotatedFrames: [], processingTimeMs: null,
+    detections: [], groundTruth: [], annotatedFrames: [], registeredFrames: [], processingTimeMs: null,
     roundTripMs: ctx.roundTripMs ?? null, metrics: {}, downloadUrl: null, message: null,
   };
 }

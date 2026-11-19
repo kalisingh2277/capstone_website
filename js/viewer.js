@@ -16,6 +16,7 @@ export class FrameViewer {
     this.onFrameChange = () => {};
     this.onSelect = () => {};
     this.annotated = [];
+    this.registered = [];
     this._bind();
     new ResizeObserver(() => this.draw()).observe(this.canvas.parentElement);
   }
@@ -56,6 +57,14 @@ export class FrameViewer {
     this.frame = Math.min(result.referenceFrame ?? 0, items.length - 1);
     this.selected = null;
     this.annotated = [];
+    this.registered = (result.registeredFrames || []).map((src) => {
+      if (!src) return null;
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => { this.draw(); this._thumbs(); };
+      img.src = src;
+      return img;
+    });
     const hasAnn = result.annotatedFrames.some(Boolean);
     const modeBox = this.$("[data-v=modes]");
     modeBox.hidden = !hasAnn;
@@ -86,7 +95,9 @@ export class FrameViewer {
       const b = document.createElement("button");
       b.className = "thumb";
       b.setAttribute("aria-label", `Frame ${i}`);
-      b.innerHTML = `<img src="${it.thumb}" alt=""><span>t${i}${i === this.result.referenceFrame ? " · ref" : ""}</span>`;
+      const reg = this.registered[i];
+      const src = reg?.complete && reg.naturalWidth ? reg.src : it.thumb;
+      b.innerHTML = `<img src="${src}" alt=""><span>t${i}${i === this.result.referenceFrame ? " · ref" : ""}</span>`;
       b.addEventListener("click", () => { this.pause(); this.go(i); });
       strip.appendChild(b);
     });
@@ -148,6 +159,15 @@ export class FrameViewer {
     this.canvas.height = Math.round(cssH * dpr);
     this.scale = (dispW * dpr) / iw;
     this.renderTo(this.ctx, this.canvas.width, this.canvas.height, this.frame, { dpr });
+    const note = this.$("[data-v=note]");
+    if (note) {
+      const msg = {
+        approx: "Positions are on the API's registered 1024×1024 crop. This frame is a centre crop of your raw upload, which isn't registered, so markers are approximate.",
+        none: "This frame has no browser preview (e.g. compressed .fits.fz). Detections are drawn on the 1024×1024 coordinate grid.",
+      }[this.baseKind];
+      note.hidden = !msg;
+      if (msg) note.textContent = msg;
+    }
   }
 
   /** Shared by on-screen drawing and PNG export. */
@@ -159,9 +179,24 @@ export class FrameViewer {
     ctx.imageSmoothingQuality = "high";
     const ann = this.annotated[frame];
     const useAnn = !forceOverlay && this.mode === "annotated" && ann?.complete && ann.naturalWidth;
-    const base = useAnn ? ann : this.items[frame].drawable;
-    if (base) ctx.drawImage(base, 0, 0, W, H);
-    if (useAnn) return; // the API already drew its own annotations
+    this.baseKind = "raw";
+    if (useAnn) {
+      ctx.drawImage(ann, 0, 0, W, H);
+      this.baseKind = "annotated";
+      return; // the API already drew its own annotations
+    }
+    const reg = this.registered[frame];
+    if (reg?.complete && reg.naturalWidth) {
+      ctx.drawImage(reg, 0, 0, W, H);           // exact: same 1024x1024 grid the coordinates use
+      this.baseKind = "registered";
+    } else {
+      const it = this.items[frame];
+      const base = it.drawable;
+      const crop = base ? this._centerCrop(it, base) : null;
+      if (base && crop) { ctx.drawImage(base, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, W, H); this.baseKind = "approx"; }
+      else if (base) ctx.drawImage(base, 0, 0, W, H);
+      else { this._placeholder(ctx, W, H); this.baseKind = "none"; }
+    }
 
     const C = CONFIG.viewer.colors;
     const u = dpr * Math.max(0.8, Math.min(1.6, W / dpr / 640)); // UI unit
@@ -237,6 +272,26 @@ export class FrameViewer {
         }
         ctx.restore();
       });
+    }
+  }
+
+  /** The API reports positions on its registered reference crop (e.g. 1024x1024). When the uploaded
+   *  frame is larger and the API sent no registered crops, show the same-sized centre crop of the raw
+   *  frame so markers land roughly where they belong. */
+  _centerCrop(it, base) {
+    const { w: iw, h: ih } = this.imageSize();
+    const d = it.dims;
+    if (!d || (d.w === iw && d.h === ih) || d.w < iw || d.h < ih) return null;
+    const s = (base.width || base.naturalWidth) / d.w; // preview downscale factor
+    return { sx: ((d.w - iw) / 2) * s, sy: ((d.h - ih) / 2) * s, sw: iw * s, sh: ih * s };
+  }
+
+  _placeholder(ctx, W, H) {
+    ctx.fillStyle = "#0b0e1c"; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(120,130,180,.18)"; ctx.lineWidth = 1;
+    for (let i = 1; i < 8; i++) {
+      ctx.beginPath(); ctx.moveTo((W * i) / 8, 0); ctx.lineTo((W * i) / 8, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, (H * i) / 8); ctx.lineTo(W, (H * i) / 8); ctx.stroke();
     }
   }
 

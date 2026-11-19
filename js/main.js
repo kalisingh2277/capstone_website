@@ -50,7 +50,11 @@ function initDetect() {
     dropzone: $("#dropzone"), input: $("#fileInput"), list: $("#frameList"),
     onChange: updateRunState, onError: (m) => toast(m, "warn"),
   });
-  $("#fileInput").accept = CONFIG.upload.extensions.join(",");
+  $("#fileInput").accept = CONFIG.upload.extensions.map((e) => e.split(".").pop()).map((e) => "." + e).join(",");
+  $("#dzTypes").textContent = `${CONFIG.upload.extensions.join(" · ")}: ${CONFIG.upload.minFiles} or more frames of the same field, any order (reorder below)`;
+  $("#sampleLine").hidden = !demo;                 // the synthetic sample is PNG, only for demo mode
+  $("#ccdRow").hidden = demo || !CONFIG.api.ccdField;
+  $("#runHint").textContent = `Add at least ${CONFIG.upload.minFiles} frames to run detection.`;
   $("#btnSortName").addEventListener("click", () => upload.sortByName());
   $("#btnSortTime").addEventListener("click", () => upload.sortByTime());
   $("#btnClear").addEventListener("click", () => upload.clear());
@@ -98,9 +102,14 @@ async function run() {
   const tick = setInterval(() => ($("#runTimer").textContent = `${((performance.now() - started) / 1000).toFixed(1)} s`), 100);
   $("#runStatus").textContent = isDemoMode() ? "Running demo detector…" : `Sending ${items.length} frames to the API…`;
   try {
-    const { raw, roundTripMs } = await runDetection(items, { signal: ctrl.signal });
+    const extra = {};
+    if (CONFIG.api.ccdField && $("#ccdInput")) extra[CONFIG.api.ccdField] = $("#ccdInput").value;
+    const { raw, roundTripMs } = await runDetection(items, { signal: ctrl.signal, extra });
     const dims = items[0].dims;
-    const result = normalizeResponse(raw, { nFrames: items.length, roundTripMs, uploadDims: dims });
+    const result = normalizeResponse(raw, {
+      nFrames: items.length, roundTripMs, uploadDims: dims,
+      coordinateSpace: isDemoMode() ? null : CONFIG.coordinateSpace,
+    });
     lastResult = result; lastItems = [...items];
     showResults(result, items);
     toast(`Done: ${result.detections.length} moving source${result.detections.length === 1 ? "" : "s"} found.`, "ok");

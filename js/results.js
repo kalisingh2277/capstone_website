@@ -1,5 +1,7 @@
 /* results.js — metrics panel, detection table, trajectory plot, coordinates */
 import { escapeHtml } from "./upload.js";
+import { CONFIG } from "./config.js";
+const CONFIG_METRICS_PATH = () => CONFIG.responseMap.metrics || "";
 
 const f = (v, d = 1) => (v == null || !Number.isFinite(+v) ? "—" : (+v).toFixed(d));
 const human = (k) => k.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -18,7 +20,9 @@ export function renderMetrics(el, r) {
     { label: "Mean apparent motion", value: speeds.length ? f(mean(speeds), 1) : "—", unit: "px / frame", sub: "registered image coords" },
     { label: "Image grid", value: r.imageSize ? `${r.imageSize.w}<span class="m-x">×</span>${r.imageSize.h}` : "—", unit: "px", small: true },
   ];
-  const extra = Object.entries(r.metrics || {}).filter(([, v]) => v != null && typeof v !== "object");
+  const secs = /timing|seconds|_s$/i.test(String(CONFIG_METRICS_PATH()));
+  const extra = Object.entries(r.metrics || {}).filter(([, v]) => v != null && typeof v !== "object")
+    .map(([k, v]) => [secs && typeof v === "number" ? `${k} (s)` : k, v]);
   el.innerHTML = `
     ${r.message ? `<p class="api-msg">${escapeHtml(r.message)}</p>` : ""}
     <div class="metric-grid">
@@ -31,7 +35,7 @@ export function renderMetrics(el, r) {
     </div>
     ${extra.length ? `
       <h4 class="mini-h">Reported by the API</h4>
-      <dl class="kv">${extra.map(([k, v]) => `<dt>${escapeHtml(human(k))}</dt><dd>${escapeHtml(typeof v === "number" ? (Number.isInteger(v) ? v : v.toFixed(4)) : v)}</dd>`).join("")}</dl>` : ""}`;
+      <dl class="kv">${extra.map(([k, v]) => `<dt>${escapeHtml(human(k).replace(/\(S\)$/, "(s)"))}</dt><dd>${escapeHtml(typeof v === "number" ? (Number.isInteger(v) ? v : v.toFixed(4)) : v)}</dd>`).join("")}</dl>` : ""}`;
 }
 
 export function renderDetectionTable(el, r, { onSelect }) {

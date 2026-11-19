@@ -517,3 +517,10 @@ body, .card, .topbar, .footer, .stat-row { transition: background-color .3s, col
 .timeline li::before { border-color: var(--coral); color: var(--coral-ink); }
 .ticks.soft li::before { color: var(--coral); }
 .adv { color: var(--coral-ink); }
+
+/* live API additions */
+.ccd-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; font-size: .92rem; }
+.ccd-row input { font: .9rem var(--mono); padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--glass-2); color: var(--ink); width: 160px; }
+.ccd-row input:focus { outline: 2px solid var(--coral); outline-offset: 1px; }
+.viewer-note { margin-top: 10px; font-size: .8rem; color: #e9d7a6; background: rgba(232,178,58,.1); border: 1px solid rgba(232,178,58,.3); border-radius: 8px; padding: 7px 10px; }
+.fc-sub .note-txt { color: var(--coral-ink); font-family: var(--sans); }

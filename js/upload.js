@@ -5,6 +5,12 @@ import { readFits, fitsToCanvas, fitsTime } from "./fits.js";
 let uid = 0;
 const fmtBytes = (b) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
 const extOf = (name) => (name.match(/\.[^.]+$/)?.[0] || "").toLowerCase();
+// matches multi-part extensions such as ".fits.fz"
+const accepts = (name) => CONFIG.upload.extensions.some((e) => name.toLowerCase().endsWith(e.toLowerCase()));
+const NO_PREVIEW_THUMB = "data:image/svg+xml," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#10132a"/>' +
+  '<g fill="#5a6290"><circle cx="22" cy="30" r="1.6"/><circle cx="70" cy="22" r="1.2"/><circle cx="58" cy="74" r="1.8"/><circle cx="30" cy="68" r="1"/><circle cx="84" cy="56" r="1.3"/></g>' +
+  '<text x="50" y="54" fill="#8a90b8" font-family="monospace" font-size="9" text-anchor="middle">no preview</text></svg>');
 
 export class UploadManager {
   constructor({ dropzone, input, list, onChange, onError }) {
@@ -32,9 +38,9 @@ export class UploadManager {
 
   async addFiles(files) {
     const allowed = CONFIG.upload.extensions;
-    const rejected = files.filter((f) => !allowed.includes(extOf(f.name)));
+    const rejected = files.filter((f) => !accepts(f.name));
     if (rejected.length) this.onError(`Skipped ${rejected.length} file(s): only ${allowed.join(", ")} are accepted.`);
-    let accepted = files.filter((f) => allowed.includes(extOf(f.name)));
+    let accepted = files.filter((f) => accepts(f.name));
     const room = CONFIG.upload.maxFiles - this.items.length;
     if (accepted.length > room) {
       this.onError(`At most ${CONFIG.upload.maxFiles} frames per run, so the last ${accepted.length - room} were skipped.`);
@@ -42,7 +48,7 @@ export class UploadManager {
     }
     const newItems = accepted.map((file) => ({
       id: ++uid, file, name: file.name, size: file.size,
-      kind: extOf(file.name) === ".png" ? "png" : "fits",
+      kind: file.name.toLowerCase().endsWith(".png") ? "png" : "fits",
       status: "loading", drawable: null, thumb: null, dims: null, time: null, error: null,
     }));
     this.items.push(...newItems);
@@ -50,7 +56,12 @@ export class UploadManager {
     for (const it of newItems) {
       await new Promise((r) => setTimeout(r, 0)); // let the UI breathe between big files
       try { await this.loadPreview(it); it.status = "ready"; }
-      catch (err) { it.status = "error"; it.error = err.message || String(err); }
+      catch (err) {
+        // A preview failure (e.g. tile-compressed .fits.fz) must not block the run:
+        // the API receives the original file untouched.
+        if (it.kind === "fits") { it.status = "ready"; it.noPreview = true; it.thumb = NO_PREVIEW_THUMB; it.note = "no browser preview, will still be sent"; }
+        else { it.status = "error"; it.error = err.message || String(err); }
+      }
       this.render();
     }
   }
@@ -131,7 +142,7 @@ export class UploadManager {
         </div>
         <div class="fc-meta">
           <div class="fc-name" title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</div>
-          <div class="fc-sub">${it.status === "error" ? `<span class="err">${escapeHtml(it.error)}</span>` : `${fmtBytes(it.size)}${dims ? " · " + dims : ""}`}</div>
+          <div class="fc-sub">${it.status === "error" ? `<span class="err">${escapeHtml(it.error)}</span>` : `${fmtBytes(it.size)}${dims ? " · " + dims : ""}${it.note ? ` · <span class="note-txt">${escapeHtml(it.note)}</span>` : ""}`}</div>
         </div>
         <div class="fc-actions">
           <button class="icon-btn" data-act="left" aria-label="Move earlier" ${idx === 0 ? "disabled" : ""}>‹</button>

@@ -22,6 +22,10 @@ export const CONFIG = {
     // API does not require a separate filename-order field.
     orderField: null,
 
+    // Optional DECam CCD name for multi-extension FITS (API form field "ccd").
+    // A "CCD (optional)" box on the Detect page fills it; leave the box empty to let the API choose.
+    ccdField: "ccd",
+
     // Extra FastAPI form fields sent with every request.
     extraFields: {
       confidence_threshold: 0.85,
@@ -57,6 +61,10 @@ export const CONFIG = {
 
     previewMaxSide: 1024, // previews are downscaled to this for display only
   },
+
+  // Coordinate space the API reports in when the response has no image_size.
+  // The API root reports crop_size [1024, 1024] (the registered reference crop).
+  coordinateSpace: { w: 1024, h: 1024 },
 
   viewer: {
     baseFps: 2,                  // 1x playback = 2 frames / second
@@ -102,11 +110,15 @@ export const CONFIG = {
       vy: "vy",
     },
 
-    annotatedFrames: "annotated_frames", // [url | base64 | data-URI, ...] optional
+    annotatedFrames: "annotated_frames", // [url | base64 | data-URI, ...] optional, already annotated by the API
+    registeredFrames: "registered_frames", // optional: plain registered 1024x1024 crops (base64 PNG / URL);
+                                           // when present the viewer draws its own overlays on these (exact positions)
 
     // API reports timings in seconds, not milliseconds.
     // Leave processingTime unmapped to avoid displaying incorrect units.
     processingTime: null,
+    // Seconds-based timings: the dashboard reads "total" (or sums the values) from this object.
+    processingTimeSeconds: "timings_seconds",
 
     referenceFrame: "reference_frame_index", // int, defaults to floor(T/2)
     imageSize: "image_size",                 // [w, h] or {width, height} optional

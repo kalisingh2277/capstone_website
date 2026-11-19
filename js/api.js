@@ -11,7 +11,7 @@ export class ApiError extends Error {
  * @param {Array<{file: File, name: string}>} items  in chronological order
  * @returns {Promise<{raw: any, roundTripMs: number, demo: boolean}>}
  */
-export async function runDetection(items, { signal } = {}) {
+export async function runDetection(items, { signal, extra = {} } = {}) {
   const t0 = performance.now();
 
   if (isDemoMode()) {
@@ -24,6 +24,7 @@ export async function runDetection(items, { signal } = {}) {
   items.forEach((it) => form.append(fileField, it.file, it.name));
   if (orderField) form.append(orderField, JSON.stringify(items.map((it) => it.name)));
   Object.entries(extraFields || {}).forEach(([k, v]) => form.append(k, String(v)));
+  Object.entries(extra).forEach(([k, v]) => { if (v !== undefined && v !== null && String(v).trim() !== "") form.append(k, String(v).trim()); });
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
